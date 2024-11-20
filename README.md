@@ -160,3 +160,136 @@ The compose up command will start the stack as follows
 </details>
 
 
+<details>
+<summary>Example haproxy.cfg</summary>
+
+```
+global
+  log stdout len 65335 local0
+  log /dev/log    local0
+  log /dev/log    local1 notice
+  chroot /var/lib/haproxy
+  user haproxy
+  group haproxy
+  daemon
+  #maxconn 4096
+  
+defaults
+  log global
+  mode http
+  option dontlognull
+  option httplog
+  timeout connect 50000
+  timeout client 50000
+  timeout server 50000
+  
+http-errors httperrors
+  errorfile 503 /config/error-pages/503.http
+  errorfile 400 /config/error-pages/404.http
+  
+listen stats
+  bind *:9000
+  mode http
+  log-format "%ci %ST %HM %HP%HQ"
+  http-request set-log-level silent
+  stats enable
+  stats hide-version
+  stats scope .
+  stats realm Haproxy\ Statistics
+  stats uri /
+  
+frontend http
+  bind *:80
+  http-request set-var(proc.sub) str("tailscale"),lower if { hdr_end(Host) -i .tailscale.yourdomain.co.uk }
+  http-request set-var(proc.application) req.hdr(host),lower,regsub(\.tailscale\.pknw1\.co\.uk$,) if { hdr_end(Host) -i .tailscale.yourdomain.co.uk }
+  redirect scheme https if !{ ssl_fc }
+  default_backend failback
+  
+  
+frontend secure 
+  bind *:443 ssl crt /etc/ssl/private/tailscale-yourdomain.co.uk.pem 
+  tcp-request inspect-delay 15s
+  errorfiles httperrors
+  mode http
+  option forwardfor
+  http-request set-var(proc.sub) str("insecure"),lower if { hdr_end(Host) -i .yourdomain.co.uk }
+  http-request set-var(proc.application) req.hdr(host),lower,regsub(\.pknw1\.co\.uk$,) if { hdr_end(Host) -i .yourdomain.co.uk }
+  
+  http-request set-var(proc.sub) str("tailscale"),lower if { hdr_end(Host) -i .tailscale.yourdomain.co.uk }
+  http-request set-var(proc.application) req.hdr(host),lower,regsub(\.tailscale\.pknw1\.co\.uk$,) if { hdr_end(Host) -i .tailscale.yourdomain.co.uk }
+  
+  http-request set-var(proc.origin) req.hdr(Origin)
+  http-request set-var(proc.referrer) req.hdr(Referer)
+  http-request set-var(proc.host) req.hdr(Host)
+  http-request set-var(req.scheme) str(https) if { ssl_fc }
+  http-request set-var(req.questionmark) str(?) if { query -m found }
+  http-request set-var(req.path) path
+  http-request set-var(txn.req_hdrs) req.hdrs
+  
+  http-request set-header X-Forwarded-Host   %[req.hdr(Host)]
+  http-request set-header X-Forwarded-For %[src] if ! { req.hdr(X-Forwarded-For) -m found }
+  http-request set-header X-Forwarded-Method %[method]
+  http-request set-header X-Forwarded-Proto  %[var(req.scheme)]
+  http-request set-header X-Forwarded-URI    %[path]%[var(req.questionmark)]%[query]
+  http-request set-header X-Forwarded-Proto https if { ssl_fc }
+  http-request set-header X-Forwarded-Proto http if !{ ssl_fc }
+  
+  http-response add-header sec-fetch-site cross-site
+  http-response set-header Strict-Transport-Security "max-age=15552000; includeSubDomains"
+  http-response set-header X-Frame-Options allowall
+  http-response set-header X-Xss-Protection "0" #"1; mode=block"
+  
+  acl	secure_domain 	hdr_end(Host) -i .secure.yourdomain.co.uk
+  acl	admin_domain	hdr_end(Host) -i .admin.yourdomain.co.uk
+  acl   top_domain	hdr_end(Host) -i .yourdomain.co.uk
+  
+  use_backend %[req.hdr(Host)] 
+  default_backend failback
+
+# dozzle.tailscale.yourdomain.co.uk
+backend dozzle.tailscale.yourdomain.co.uk
+option http-server-close
+  http-response add-header Set-Cookie "APP=%[var(proc.application)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  http-response add-header Set-Cookie "SUB=%[var(proc.sub)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  server dozzle_tailscale_pknw1_co_uk0 172.32.0.6:8080
+
+# glances.tailscale.yourdomain.co.uk
+backend glances.tailscale.yourdomain.co.uk
+option http-server-close
+  http-response add-header Set-Cookie "APP=%[var(proc.application)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  http-response add-header Set-Cookie "SUB=%[var(proc.sub)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  server  glances_tailscale_pknw1_co_uk0 172.32.0.9:61208
+
+# haproxy-ui.tailscale.yourdomain.co.uk
+backend haproxy-ui.tailscale.yourdomain.co.uk
+option http-server-close
+  http-response add-header Set-Cookie "APP=%[var(proc.application)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  http-response add-header Set-Cookie "SUB=%[var(proc.sub)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  server haproxy-ui_tailscale_pknw1_co_uk0 172.32.0.7:5000
+
+# radarr.tailscale.yourdomain.co.uk
+backend radarr.tailscale.yourdomain.co.uk
+option http-server-close
+  http-response add-header Set-Cookie "APP=%[var(proc.application)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  http-response add-header Set-Cookie "SUB=%[var(proc.sub)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  server radarr_tailscale_pknw1_co_uk0 172.32.0.5:7878
+
+# whoami.tailscale.yourdomain.co.uk
+backend whoami.tailscale.yourdomain.co.uk
+option http-server-close
+  http-response add-header Set-Cookie "APP=%[var(proc.application)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  http-response add-header Set-Cookie "SUB=%[var(proc.sub)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  server whoami_tailscale_pknw1_co_uk0 172.32.0.8:8000
+
+# www.tailscale.yourdomain.co.uk
+backend www.tailscale.yourdomain.co.uk
+option http-server-close
+  http-response add-header Set-Cookie "APP=%[var(proc.application)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  http-response add-header Set-Cookie "SUB=%[var(proc.sub)]; max-age=2620800; domain=.yourdomain.co.uk; path=/; samesite=lax; httponly;"
+  server www_tailscale_pknw1_co_uk0 172.32.0.3:80
+
+
+backend failback
+```
+
+</details>
