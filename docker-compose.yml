@@ -1,0 +1,138 @@
+services:
+  tailscale_vpn:
+    image: tailscale/tailscale:latest
+    container_name: tailscale_vpn
+    hostname: tailscale_vpn
+    env_file: .env
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY} 
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_DEST_IP=${HAPROXY_IP}
+      - TS_USERSPACE=false
+    volumes:
+      - ./config/tailscale/state:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - net_admin
+      - sys_module
+    networks:
+      - ${TAILSCALE_NETWORK}
+    restart: unless-stopped
+
+  haproxy_tailscale:
+    image: haproxy:alpine
+    container_name: haproxy_tailscale
+    hostname: haproxy_tailscale
+    env_file: .env
+    user: 0:0
+    command: [
+       "haproxy",
+       "--",
+       "/config/config/haproxy.cfg"
+       ]
+    networks:
+      tailscale_haproxy:
+        ipv4_address: ${HAPROXY_IP}
+    volumes:
+        - /etc/localtime:/etc/localtime:ro
+        - /etc/ssl:/etc/ssl:ro
+        - ./config/haproxy:/config
+        - ./config/haproxy/error-pages:/etc/haproxy/error-pages:ro
+    restart: always
+    environment:
+      - TAILSCALE_HOST=haproxy.tailscale.pknw1.co.uk
+      - VIRTUAL_PORT=9000
+    depends_on:
+      - dockergen_tailscale
+
+  dockergen_tailscale:
+    image: nginxproxy/docker-gen
+    command: -config /config/dockergen/docker-gen.cfg
+    container_name: dockergen_tailscale
+    hostname: dockergen_tailscale
+    volumes:
+      - ./config/dockergen:/config/dockergen
+      - ./config/haproxy/config:/config/haproxy
+      - ./config/nginx/www:/config/nginx
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - ${TAILSCALE_NETWORK}
+
+  dozzle_tailscale:
+    image: amir20/dozzle:latest
+    container_name: dozzle_tailscale
+    hostname: dozzle_tailscale
+    privileged: true
+    volumes:
+      - ./config/dozzle:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - TAILSCALE_HOST=dozzle.tailscale.pknw1.co.uk
+      - VIRTUAL_PORT=8080
+    networks:
+      - ${TAILSCALE_NETWORK}
+
+  glances_tailscale:
+    image: nicolargo/glances:latest-full
+    pid: host
+    devices:
+      - /dev/kmesg
+    container_name: glances_tailscale
+    hostname: glances_tailscale
+    privileged: true
+    volumes:
+      - ./config/glances/glances.conf:/glances/conf/glances.conf
+      - /var/run:/var/run:ro
+      - /:/rootfs:ro
+      - /sys:/sys:ro
+      - /dev:/dev:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /etc/os-release:/etc/os-release:ro
+    environment:
+      - "GLANCES_OPT=-w"
+      - TAILSCALE_HOST=glances.tailscale.pknw1.co.uk
+      - VIRTUAL_PORT=61208
+    networks:
+      - ${TAILSCALE_NETWORK}
+
+  haproxy-ui:
+    image: pknw1/haproxy-manager-ui
+    container_name: haproxy-ui_tailscale
+    hostname: haproxy-ui_tailscale
+    volumes:
+      - ./config/haproxy/config:/etc/haproxy
+    environment:
+      - TAILSCALE_HOST=haproxy-ui.tailscale.pknw1.co.uk
+      - VIRTUAL_PORT=5000
+    networks:
+      - ${TAILSCALE_NETWORK}
+
+  nginx_tailscale:
+    image: nginx
+    container_name: nginx_tailscale
+    volumes:
+      - ./config/nginx/www:/usr/share/nginx/html
+    networks:
+      - ${TAILSCALE_NETWORK}
+    environment:
+      - TAILSCALE_HOST=www.tailscale.pknw1.co.uk
+      - VIRTUAL_PORT=80
+
+  whoami:
+    image: jwilder/whoami
+    container_name: whoami_tailscale
+    hostname: whoami
+    environment:
+      - TAILSCALE_HOST=whoami.tailscale.pknw1.co.uk
+    networks:
+      - ${TAILSCALE_NETWORK}
+
+
+networks:
+  tailscale_haproxy:
+    name: ${TAILSCALE_NETWORK} 
+    ipam:
+      config:
+        - subnet: 172.32.0.0/24
+          gateway: 172.32.0.1
+

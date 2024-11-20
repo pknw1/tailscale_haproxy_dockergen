@@ -1,0 +1,7 @@
+.env
+haproxy.cfg
+config/tailscale/state/**
+config/dockergen/haproxy.tmpl
+config/dockergen/www.tmpl
+config/nginx/www/index.html
+!.keep

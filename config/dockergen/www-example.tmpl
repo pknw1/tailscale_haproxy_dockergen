@@ -1,0 +1,7 @@
+            
+{{ range $host, $containers := groupByMulti $ "Env.TAILSCALE_HOST" "," }}
+{{ $name_dots := replace $host "." "_" -1}}
+{{ $name := replace $name_dots "*" "www" -1 }}
+{{ $host_clean := replace $host "*" "www" -1 }}
+<p style="color: white"><a href="https://{{$host_clean}}" target="_new" > {{$host_clean}} </a></p>
+{{ end }}

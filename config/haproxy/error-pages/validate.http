@@ -1,0 +1,19 @@
+HTTP/1.1 200 OK
+Cache-Control: no-cache
+Connection: close
+Content-Type: text/html
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>200 Not Found</title>
+    </head>
+    <body>
+        <main>
+            <h1>200 Not Found</h1>
+
+            This is my custom 200 Not Found page!
+        </main>
+    </body>
+</html>
